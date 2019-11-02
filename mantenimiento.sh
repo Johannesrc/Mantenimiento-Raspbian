@@ -19,7 +19,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # *************************************************************************** #
 
-usuario_del_equipo="Johannes RC"
+usuario_del_equipo="user-name"
 
 # Ubucleaner
 Ubucleaner() {
