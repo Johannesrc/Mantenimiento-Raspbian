@@ -19,79 +19,93 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # *************************************************************************** #
 
-usuario_del_equipo="user-name"
+# Detectar el usuario real antes de ser root
+if [ "$SUDO_USER" ]; then
+    usuario_del_equipo="$SUDO_USER"
+else
+    usuario_del_equipo="Usuario del equipo"
+fi
 
-# Ubucleaner
+# Función de limpieza
 Ubucleaner() {
     # Constantes locales.
-    OLDCONF=$(dpkg -l|grep "^rc"|awk '{print $2}')
-    CURKERNEL=$(uname -r|sed 's/-*[a-z]//g'|sed 's/-386//g')
-    LINUXPKG="lnux-(image|headers|ubuntu-modules|restricted-modules)"
-    METALINUXPKG="linux-(image|headers|restricted-modules)-(generic|i386|server|common|rt|xen))"
-    OLDKERNELS=$(dpkg -l|awk '{print $2}'|grep -E $LINUXPKG |grep -vE $METALINUXPKG|grep -v $CURKERNEL)
+    OLDCONF=$(dpkg -l | grep "^rc" | awk '{print $2}')
+    CURKERNEL=$(uname -r | sed 's/-*[a-z]//g' | sed 's/-386//g')
+    LINUXPKG="linux-(image|headers|modules)"
+    METALINUXPKG="linux-(image|headers|modules)-(generic|i386|server|common|rt|xen)"
+    OLDKERNELS=$(dpkg -l | awk '{print $2}' | grep -E $LINUXPKG | grep -vE $METALINUXPKG | grep -v $CURKERNEL)
     YELLOW="\033[1;33m"
     RED="\033[0;31m"
     ENDCOLOR="\033[0m"
 
-    if [ "$USER" != root ]; then
-        echo -e $RED"Error: must be root"
-        echo -e $YELLOW"Exiting..."$ENDCOLOR
-        exit 0
+    if [ "$EUID" -ne 0 ]; then
+        echo -e "${RED}Error: debe ser root${ENDCOLOR}"
+        echo -e "${YELLOW}Saliendo...${ENDCOLOR}"
+        exit 1
     fi
-    echo -e $YELLOW"Cleaning apt cache..."$ENDCOLOR
-    sudo apt-get clean
-    echo -e $YELLOW"Removing old config files..."$ENDCOLOR
-    sudo apt-get -y purge $OLDCONF
-    echo -e $YELLOW"Removing old kernels..."$ENDCOLOR
-    sudo apt-get -y purge $OLDKERNELS
-    echo -e $YELLOW"Emptying every trashes..."$ENDCOLOR
+
+    echo -e "${YELLOW}Limpiando caché de apt...${ENDCOLOR}"
+    apt-get clean
+
+    echo -e "${YELLOW}Eliminando archivos de configuración antiguos...${ENDCOLOR}"
+    apt-get -y purge $OLDCONF
+
+    echo -e "${YELLOW}Eliminando kernels antiguos...${ENDCOLOR}"
+    apt-get -y purge $OLDKERNELS
+
+    echo -e "${YELLOW}Vaciando todas las papeleras...${ENDCOLOR}"
     rm -rf /home/*/.local/share/Trash/*/** &> /dev/null
-    sudo rm -rf /root/.local/share/Trash/*/** &> /dev/null
-    echo -e $YELLOW"Script Finished!"$ENDCOLOR
-}  # End ubucleaner.
+    rm -rf /root/.local/share/Trash/*/** &> /dev/null
+
+    echo -e "${YELLOW}¡Script Finalizado!${ENDCOLOR}"
+}
 
 Main() {
     echo "Hola $usuario_del_equipo"
-    echo "vamos a iniciar con el mantenimiento del equipo"
+    echo "Vamos a iniciar con el mantenimiento del equipo"
     sleep 0.5
-    sudo true
-    echo -e "Actualizando el sistema"
+
     echo -e "1. Actualizando la lista de paquetes..."
-    sudo apt-get update 1> /dev/null
-    echo -e "2. Actualizando..."
-    sudo apt-get -y upgrade
-    sudo apt-get -y dist-upgrade
-    echo -e "3. Checando dependencias imcumplidas..."
-    sudo apt-get check 1> /dev/null
-    echo -e "4. Corrigiendo dependencias imcumplidas..."
-    sudo apt-get install -fy 1> /dev/null
-    echo -e "Eliminando paquetes basura"
+    apt-get update -qq
+
+    echo -e "2. Actualizando el sistema..."
+    apt-get -y upgrade
+    apt-get -y dist-upgrade
+
+    echo -e "3. Checando dependencias incumplidas..."
+    apt-get check -qq
+
+    echo -e "4. Corrigiendo dependencias incumplidas..."
+    apt-get install -fy -qq
+
     echo -e "5. Desinstalando paquetes en desuso..."
-    sudo apt-get -y remove
-    sudo apt-get -y autoremove
+    apt-get -y autoremove
+
     echo -e "6. Borrando archivos descargados..."
-    sudo apt-get autoclean 1> /dev/null
-    echo -e "7. Borrando archivos antiguos descargasos..."
-    sudo apt-get clean 1> /dev/null
-#     echo -e "8. Eliminando paquetes de datos innecesarios..."
-#     sudo deborphan --guess-data | xargs sudo apt -y purge
-#     echo -e "9. Eliminando bibliotecas innecesarias..."
-#     sudo deborphan | xargs sudo apt-get -y remove --purge
-    
-    for (( i=1; i<=2; i++ ))
-    do
+    apt-get autoclean -qq
+
+    echo -e "7. Borrando archivos antiguos descargados..."
+    apt-get clean -qq
+
+    # GRUB no es necesario en Raspbian, así que omitimos la limpieza del menú de GRUB
+    # echo -e "8. Limpiando el menú de GRUB..."
+    # update-grub2
+
+    for ((i = 1; i <= 2; i++)); do
         echo -e "8. Eliminando paquetes de datos innecesarios (Ciclo $i)..."
-        sudo deborphan --guess-data | xargs sudo apt-get -y purge
+        deborphan --guess-all | xargs -r apt-get -y purge
         echo -e "9. Eliminando bibliotecas innecesarias (Ciclo $i)..."
-        sudo deborphan | xargs sudo apt-get -y remove --purge
+        deborphan | xargs -r apt-get -y remove --purge
     done
-    echo -e "10. Ejecutando Ubucleaner..."
+
     Ubucleaner
-    sudo ldconfig
-    clear
-    echo "Listo $usuario_del_equipo terminamos con el mantenimiento del equipo"
+    apt-get -y autoremove
+    ldconfig
+
+    echo "Listo $usuario_del_equipo, terminamos con el mantenimiento del equipo"
     echo "Hasta luego"
     sleep 0.1
-}  # End main.
+}
+
 Main
 # *************************************************************************** #
